@@ -1,0 +1,1759 @@
+---
+title: "Clasificaci&oacute;n - &Aacute;rboles de decisi&oacute;n - SVM"
+author: Olga Luc&iacute;a Montoya P&eacute;rez
+output: html_document
+widgets: "nyt_home"
+highlighter: prettify
+hitheme: twitter-bootstrap
+assets:
+  css:
+    - "http://fonts.googleapis.com/css?family=Raleway:300"
+    - "http://fonts.googleapis.com/css?family=Oxygen"
+---
+
+<style>
+body{
+  font-family: 'Oxygen', sans-serif;
+  font-size: 13px;
+  line-height: 24px;
+}
+
+h1,h2,h3,h4 {
+  font-family: 'Raleway', sans-serif;
+  font-size: 19px;
+}
+
+.container { width: 1000px; }
+h3 {
+  background-color: #D4DAEC;
+  text-indent: 100px; 
+}
+h4 {
+  text-indent: 100px;
+}
+
+g-table-intro h4 {
+  text-indent: 0px;
+}
+</style>
+
+```{r include=FALSE}
+knitr::opts_chunk$set(message=FALSE, warning=FALSE)
+```
+
+Este trabajo consiste en desarrollar  ejercicios del libro gu&iacute;a de la materia T&eacute;cnicas de aprendizaje estad&iacute;stico, A Introduction to Statistical Learning with Application in R[2]. El listado de ejercicios por secci&oacute;n son:
+
+* Secci&oacute;n [4. Clasificaci&oacute;n](#4) se deben desarrollar los ejercicios del 10 al 13
+* Secci&oacute;n [8 &Aacute;rboles de decisi&oacute;n](#8), se deben desarrollar los ejercicios del 7 al 12
+* Secci&oacute;n [9 M&aacute;quinas de suporte vectorial](#9), se deben desarrollar los ejercicios del 4 al 8
+
+```{r,warning=FALSE,message=FALSE, echo=FALSE}
+#Librerías a utilizar en el desarrollo de los ejercicios
+library(ISLR)
+library(corrplot)
+library(caret)
+library(lattice)
+library(ggplot2)
+library(Amelia)
+library(caTools)
+library(MASS)
+library(class)
+library(randomForest)
+library(tree)
+library(gbm)
+library(ipred)
+library(e1071) 
+library(caret)
+library(Matrix)
+library(glmnet)
+```
+
+<div id="4"></div>
+### **4. Clasificaci&oacute;n**
+**Secci&oacute;n 4.7 - Aplicaci&oacute;n**
+
+
+**10. This question should be answered using the Weekly data set, which is part of the ISLR package. This data is similar in nature to the Smarket data from this chapter’s lab, except that it contains 1,089 weekly returns for 21 years, from the beginning of 1990 to the end of 2010.**
+
+El dataset Weekly contiene a&ntilde;o a a&ntilde;o informaci&oacute;n del rendimiento semanal para el &iacute;ndice burs&aacute;til S&P 500, las dimensiones con las que cuenta el dataset son:
+
+* Porcentaje de retorno de la semana anterior (Lag1)
+* Porcentaje de retorno de dos semana anteriores (Lag2)
+* Porcentaje de retorno de los tres semanas anteriores (Lag3)
+* Porcentaje de retorno de las cuatro semanas anteriores (Lag4)
+* Porcentaje de retorno de las cinco semanas anteriores(Lag5)
+* Volumen de acciones negociadas (N&uacute;mero de acciones negociadas en miles de millones) 
+* Porcentaje de retorno de esta semana (Today)
+* Indicador si el mercado tuvo retornos positivos o negativos en determinada semana (Direction)
+
+  **a. Produce some numerical and graphical summaries of the Weekly data. Do there appear to be any patterns?**
+
+Est&aacute;disticos b&aacute;sicos del data set Weekly
+
+```{r echo = FALSE}
+Weekly$Direction <- as.factor(Weekly$Direction)
+summary(Weekly)
+```
+
+De los estad&iacute;sticos b&aacute;sicos se tiene que los porcentajes de retorno en los diferentes per&iacute;odos del tiempo son muy similares en su distribuci&oacute;n, como bien se puede corroborar en la siguiente gr&aacute;fica. 
+
+```{r echo=FALSE}
+boxplot(Weekly$Lag1, Weekly$Lag2, Weekly$Lag3, Weekly$Lag4, Weekly$Lag5, Weekly$Today,  main = "Distribucion de los datos por porcentaje de retorno" )
+
+```
+
+Por su parte, la variable objetivo, Direction, es binaria, toma los valores de down y up. El volumen de acciones negociadas en promedio son de 1.6 miles de millones.
+
+A medida que pasan los a&ntilde;s, los volumen de acciones negociadas en miles de millones tienen mayor rango de oscilaci&oacute;n.
+
+```{r echo=FALSE}
+boxplot(Volume~Year,data=Weekly, main="Weekly data",
+   xlab="Años", ylab="Volumen de acciones negociadas")
+```
+
+La &uacute;nica variable que parece explicar la variable objetivo Direction es Today, de resto, la variable objetivo, no es explicada por ninguna de las dem&aacute;s variables predictoras.
+
+```{r echo=FALSE}
+x <- Weekly[,1:8]
+y <- Weekly[,9]
+scales <- list(x=list(relation="free"), y=list(relation="free"))
+featurePlot(x=x, y=y, plot="density", scales=scales)
+```
+
+No hay valores faltantes en el dataset.
+
+```{r echo=FALSE}
+missmap(Weekly, main = "Missing values vs observed")
+```
+
+
+  **b. Use the full data set to perform a logistic regression with Direction as the response and the five lag variables plus Volume as predictors. Use the summary function to print the results. Do any of the predictors appear to be statistically significant? If so, which ones?**
+
+Entrenando la regresi&oacute;n log&iacute;stica
+
+```{r echo=FALSE}
+#Weekly$Direction <- ifelse(Weekly$Direction == "Down", 1, 0)
+weekly_log <- glm(Direction ~ Lag1 + Lag2 + Lag3 + Lag4 + Lag5 + Volume, data = Weekly, family = binomial)
+summary(weekly_log)
+```
+
+y analizando sus resultados, el p-value es menor que 0.05 para el coeficiente de lag2, esta variable es estad&iacute;sticamente significativa con la variable dependiente.
+
+  **c. Compute the confusion matrix and overall fraction of correct predictions. Explain what the confusion matrix is telling you about the types of mistakes made by logistic regression.**
+
+```{r echo=FALSE}
+#Se procede a crear una variable nueva con la conversión a factor de la variable predictora, Direction
+Weekly$Direction_factor <- factor(Weekly$Direction)
+contrasts(Weekly$Direction_factor)
+```
+
+La divisi&oacute;n de los datos de entrenamiento y prueba para predecir el modelo es un 75%-25%
+
+```{r echo=FALSE}
+# Division de datos de pruebas y datos de entrenamiento
+set.seed(88)
+
+#Se dividen los datos, el 75% para entrenar y el 25% restante para probar
+inTrain <- createDataPartition(y = Weekly$Direction_factor, p = .75, list = FALSE)
+training_wee <- Weekly[inTrain,]
+testing_wee <- Weekly[-inTrain,]
+```
+
+En total se tienen `r dim(training_wee)` datos para entrenamiento
+
+En total se tienen `r dim(testing_wee)` datos  para prueba
+
+Se entrena la regresi&oacute;n log&iacute;stica con los datos de entrenamiento
+
+```{r echo=FALSE}
+set.seed(88)
+weekly_log_train <- glm(Direction_factor ~ Lag1 + Lag2 + Lag3 + Lag4 + Lag5 + Volume, data = training_wee, family = binomial)
+summary(weekly_log_train)
+```
+
+Al entrenar el modelo con los datos de entrenamiento, no se encuentra ninguna características estadisticamente significativa.
+
+Se predice la regresi&oacute;n log&iacute;stica con los datos de prueba
+
+```{r echo=FALSE}
+set.seed(88)
+weekly_predict <- predict(weekly_log_train, testing_wee, type = "response")
+```
+
+```{r echo=FALSE}
+tapply(weekly_predict, testing_wee$Direction, mean)
+```
+
+Para ambos clases, se predice una probabilidad promedio del 55%, lo cual es una probabilidad alta.
+
+```{r echo=FALSE}
+#Traducción de los valores de predicción a las categorías del dataset original
+weekly_rep = rep("Down", dim(testing_wee)[1])
+weekly_rep[weekly_predict > .5] = "Up"
+#Matriz de confusión
+log_mf <- table(weekly_rep, testing_wee$Direction_factor, dnn = c('Predicho','Real'))
+confusionMatrix(log_mf)
+```
+
+De la matriz de confusión se concluye que la regresi&oacute;n log&iacute;stica tiene un accuracy del 56%, este indicador nos dice que tan bueno es el modelo prediciendo ambas clases Down y Up, un 56% es un porcentaje no muy bueno, por lo cual se podr&iacute;a concluir que el clasificador por regresi&oacute;n log&iacute;stica no es el mejor. Por su parte la especificiada es alta, 92%, esta nos indica que para la clase up de un total de 151 registros pertenecientes a esta clase, el modelo fue capaz de predecir 140.
+
+
+  **d. Now fit the logistic regression model using a training data period from 1990 to 2008, with Lag2 as the only predictor. Compute the confusion matrix and the overall fraction of correct predictions for the held out data (that is, the data from 2009 and 2010).**
+
+Se particionan nuevamente los datos y se obtienen
+
+```{r echo=FALSE}
+# Division de datos de pruebas y datos de entrenamiento
+set.seed(88)
+
+#Se dividen los datos, el 75% para entrenar y el 25% restante para probar
+trainingd <- Weekly[which(Weekly$Year >= 1990 & Weekly$Year <= 2008), ]
+testingd <- Weekly[which(Weekly$Year >= 2009 & Weekly$Year <= 2010), ]
+
+#Imprimir el número de registros en cada partición
+paste("Cantidad de datos para entrenamiento", dim(trainingd)[1])
+paste("Cantidad de datos para prueba", dim(testingd)[1])
+```
+
+Se entrena la regresión logística
+
+```{r echo=FALSE}
+weekly_log_d <- glm(Direction_factor ~ Lag2, data = trainingd, family = binomial)
+summary(weekly_log_d)
+```
+
+El modelo teniendo en cuenta una variable sola variable predictora, Lag2, indica que ella es estadísticamente significativa
+
+```{r echo=FALSE}
+weekly_predict_d <- predict(weekly_log_d, testingd, type = "response")
+```
+
+A partir de la matriz de confusión
+
+```{r echo=FALSE}
+#Traducción de los valores de predicción a las categorías del dataset original
+weekly_rep_d = rep("Down", dim(testingd)[1])
+weekly_rep_d[weekly_predict_d > .5] = "Up"
+#Matriz de confusión
+log_confm <- table(weekly_rep_d, testingd$Direction_factor)
+confusionMatrix(log_confm)
+```
+
+En este ejercicio el poder predictivo disminuye, si bien la distribuci&oacute;n del data set difiere y este cambio influye en la forma predecir del modelo, tambi&eacute;n se disminuyeron considerablemente las variables predictoras, dejando &uacute;nicamente Lag2. Dado los valores arrojados por sensibilidad y  especificidad se concluye que lag2 para la regresi&oacute;n log&iacute;stica aporta m&aacute;s prediciendo para la clase Up que la Down.
+
+  **e. Repeat (d) using LDA - An&aacute;lisis Discriminante Lineal**
+  
+Entrenamiento del modelo LDA
+
+```{r echo=FALSE}
+weekly_lda <- lda(Direction_factor ~ Lag2, data = trainingd)
+weekly_lda
+```
+
+Seg&uacute;n la funci&oacute;n discriminante de LDA, la probabilidad posterior de que el mercado tenga un retorno positivo en determinada semana es del 55% frente a un 44% de que sea negativo.
+
+De la matriz de confusión
+
+```{r echo=FALSE}
+weekly_lda_pred <- predict(weekly_lda, newdata = testingd)
+lda_cm <- table(testingd$Direction_factor, weekly_lda_pred$class, dnn = c("Clase real", "Clase predicha"))
+confusionMatrix(lda_cm)
+```
+
+Con LDA los resultados comparados con la regresi&oacute;n log&iacute;stica no difiere considerablemente, esto puede ser debido a que estamos trabajando un problema de clasificaci&oacute;n en dos niveles. Sin embargo para LDA los indicadores disminuyen un poco. 
+
+  **f.Repeat (d) using QDA - Análisis Discriminante Cuadrático**
+  
+Entrenamiento de QDA
+
+```{r echo=FALSE}
+weekly_qda <- qda(Direction_factor ~ Lag2, data = trainingd)
+weekly_qda
+```
+
+El resultado en cuento a probabilidades es muy similar al arrojado por LDA a nivel de probabiliades.
+
+```{r echo=FALSE}
+weekly_qda_pred <- predict(object = weekly_qda, newdata = testingd)
+qda_cm <- table(testingd$Direction_factor, weekly_qda_pred$class, dnn = c("Clase real", "Clase predicha"))
+confusionMatrix(qda_cm)
+```
+
+Sin embargo este acercamiento en la predicci&oacute;n no aporta en la casificaci&oacute;n de la clase Down por lo cual el valor de la sensibilidad no aplica.
+
+  **g. Repeat (d) using KNN with K = 1.**
+
+Entrenamiento de los k vecinos más cercanos
+
+```{r echo=FALSE}
+set.seed(88)
+weekly_knn <- knn(train=trainingd[,1:8], test=testingd[,1:8], cl=trainingd$Direction_factor, k=1)
+knn_cm <- table(weekly_knn, testingd$Direction_factor)
+confusionMatrix(knn_cm)
+```
+
+Este acercamiento con vecimos m&aacute;s cercanos da mejores rendimientos para ambas clases con un sólo vecino cercano.
+
+  **h. Which of these methods appears to provide the best results on this data?**
+
+El m&eacute;todo que parece mejorar los resultados a partir del set de datos de Weekly es vecinos m&aacute;s cercanos, donde con un sólo vecino, puede clasificar correctamente ambas clases. El accuracy del modelo es del 79%, lo cual es aceptable, pero cuando se revisa la sensibilidad, en este caso la porci&oacute; de clase Up clasificada como Up, se tiene que es del 86% y las clases positivas, Down, por su parte del 75%.
+
+
+  **i. Experiment with different combinations of predictors, includ-ing possible transformations and interactions, for each of the methods. Report the variables, method, and associated confusion matrix that appears to provide the best results on the held out data. Note that you should also experiment with values for K in the KNN classifier.**
+
+Se procede a variar el valor de k en vecinos m&aacute;s cercanos, m&eacute;todo que parece m&aacute;s apropiado, para revisar como esta variaci&oacute;n afecta los resultados anteriores
+
+```{r echo=FALSE}
+set.seed(88)
+weekly_knn_var <- knn(train=trainingd[,1:8], test=testingd[,1:8], cl=trainingd$Direction_factor, k = 5)
+knn_cm_var <- table(weekly_knn, testingd$Direction_factor)
+confusionMatrix(knn_cm_var)
+```
+
+Probando con los valores de k = 3 y k = 5, se obtienen los mismos comportamientos que con k = 1.
+
+**11. In this problem, you will develop a model to predict whether a given car gets high or low gas mileage based on the Auto data set.**
+
+El dataset Auto, contiene informaci&oacute;n del rendimiento de la gasolina, los caballos de fuerza de 392 veh&iacute;culos. Las dimensiones con las que se cuentan en el dataset son:
+
+* mpg: millas por gal&oacute;n
+* cylinders: n&uacute;mero de cilindros entre 4 y 8
+* displacemente: kilometraje del motor
+* horsepower: caballos de fuerza del motor
+* weight: peso del veh&iacute;culo en libras
+* acceleratios: tiempo de aceleraci&oacute;n de 0 a 60 mph
+* year: modelo del auto
+* origin: de donde es el auto
+* name: nombre del veh&iacute;culo
+
+  **a. Create a binary variable, mpg01, that contains a 1 if mpg contains a value above its median, and a 0 if mpg contains a value below its median. You can compute the median using the median() function. Note you may find it helpful to use the data.frame() function to create a single data set containing both mpg01 and the other Auto variables.**
+
+```{r}
+auto_df <- Auto
+mpg_median <- median(auto_df$mpg)
+auto_df$mpg01 <- ifelse(auto_df$mpg >= mpg_median, 1, 0)
+```
+
+  **b. Explore the data graphically in order to investigate the association between mpg01 and the other features. Which of the other features seem most likely to be useful in predicting mpg01? Scatterplots and boxplots may be useful tools to answer this question. Describe your findings.**
+
+```{r echo=FALSE}
+plot(auto_df)
+```
+
+Parece existir una relaci&oacute;n lineal entre los caballos de fuerza con el peso y la aceleraci&oacute;n.
+
+```{r echo=FALSE}
+boxplot(weight~mpg01,data=auto_df, main="Auto data",
+   xlab="mpg01", ylab="weight")
+```
+
+De las dem&aacute;s caracter&iacute;sticas, las que menos hacen separaci&oacute;n de los datos son name y origin
+
+  **c. Split the data into a training set and a test set.**
+
+```{r echo=FALSE}
+set.seed(88)
+#Se dividen los datos, el 75% para entrenar y el 25% restante para probar
+inTrain_auto <- createDataPartition(y = auto_df$mpg01, p = .75, list = FALSE)
+training_auto <- auto_df[inTrain_auto,]
+testing_auto <- auto_df[-inTrain_auto,]
+
+#Imprimir el número de registros en cada partición
+paste("Total de datos usados para entrenamiento ", dim(training_auto)[1])
+paste("Total de datos usados para prueba ", dim(testing_auto)[1])
+```
+
+  **d. Perform LDA on the training data in order to predict mpg01 using the variables that seemed most associated with mpg01 in (b). What is the test error of the model obtained?**
+
+Entrenamiento de LDA
+
+```{r echo=FALSE}
+auto_lda <- lda(mpg01 ~ mpg + cylinders + displacement + horsepower + weight + acceleration + year, data = training_auto)
+auto_lda
+```
+
+Seg&uacute;n la funci&oacute;n discriminante de LDA, la probabilidad posterior que los valores de las millas por gal&oacute;n sea mayor que la media es del 50%.
+
+De la matriz de confusión
+
+```{r echo=FALSE}
+auto_lda_pred <- predict(auto_lda, newdata = testing_auto)
+auto_lda_cm <- table(testing_auto$mpg01, auto_lda_pred$class, dnn = c("Clase real", "Clase predicha"))
+confusionMatrix(auto_lda_cm)
+```
+```{r echo=FALSE}
+auto_testing_error <- mean(testing_auto$mpg01 != auto_lda_pred$class) *100
+paste('Error de prueba ', auto_testing_error, '%')
+```
+
+Este clasificador a la hora de predecir es &oacute;ptimo, tiene una accuracy del 93% y ambas clases las clasifica en m&aacute;s del 90%. El error en las pruebas es bajo, solo el 6%
+
+  **e. Perform QDA on the training data in order to predict mpg01 using the variables that seemed most associated with mpg01 in (b). What is the test error of the model obtained?**
+  
+Entrenamiento con QDA
+
+```{r echo=FALSE}
+auto_qda <- qda(mpg01 ~ mpg + cylinders + displacement + horsepower + weight + acceleration + year, data = training_auto)
+auto_qda
+```
+
+El resultado en cuento a probabilidades es muy similar al arrojado por LDA a nivel de probabiliades.
+
+De la matriz de confusión
+
+```{r echo=FALSE}
+auto_qda_pred <- predict(object = auto_qda, newdata = testing_auto)
+auto_qda_cm <- table(testing_auto$mpg01, auto_qda_pred$class, dnn = c("Clase real", "Clase predicha"))
+confusionMatrix(auto_qda_cm)
+```
+```{r echo=FALSE}
+auto_testing_error_qda <- mean(testing_auto$mpg01 != auto_qda_pred$class) *100
+paste('Error de prueba ', auto_testing_error_qda, '%')
+```
+
+Con QDA se mejoran las métricas de clasificiaci&oacute;n del modelo y el error de predicci&oacute;n disminuye a un 5%.
+
+  **f. Perform logistic regression on the training data in order to predict mpg01 using the variables that seemed most associated with mpg01 in (b). What is the test error of the model obtained?**
+
+Entrenamiento de regresión logística
+
+```{r echo=FALSE}
+auto_log <- glm(mpg01 ~ mpg + cylinders + displacement + horsepower + weight + acceleration + year, data = training_auto, family = binomial)
+summary(auto_log)
+```
+
+Ninguna de las variables seleccionadas para la predici&oacute;n parecen ser estadísticamente significativas.
+
+```{r echo=FALSE}
+auto_predict_log <- predict(auto_log, testing_auto, type = "response")
+```
+
+De la matriz de confusión
+
+```{r echo=FALSE}
+#Traducción de los valores de predicción a las categorías del dataset original
+auto_predict_log[auto_predict_log > .5] = 1
+auto_predict_log[auto_predict_log <= .5] = 0
+#Matriz de confusión
+auto_log_cm <- table(auto_predict_log, testing_auto$mpg01)
+confusionMatrix(auto_log_cm)
+```
+
+```{r echo=FALSE}
+auto_testing_error_lr <- mean(testing_auto$mpg01 != auto_predict_log) *100
+paste('Error de prueba ', auto_testing_error_lr, '%')
+```
+
+De acuerdo a los resultados obtenidos parece ser que la regresi&oacute; logística esta sobreajustada, dando un accuracy del 100%.
+
+  **g. Perform KNN on the training data, with several values of K, in order to predict mpg01. Use only the variables that seemed most associated with mpg01 in (b). What test errors do you obtain? Which value of K seems to perform the best on this data set?**
+
+Entrenamiento KNN
+
+```{r echo=FALSE}
+set.seed(88)
+auto_knn_predic <- knn(training_auto[,1:7], testing_auto[,1:7], cl=training_auto$mpg01, k = 2)
+auto_knn_cm <- table(auto_knn_predic, testing_auto$mpg01)
+confusionMatrix(auto_knn_cm)
+```
+
+Se prueba con k = [1,2,3,4,5,6,7] y se muestran los resultados con k=2, ya que es el k que da mejores resultados, con un accuracy del 93% y una alta tasa de efectividad en ambas clases.
+
+```{r echo=FALSE}
+auto_testing_error_knn <- mean(testing_auto$mpg01 != auto_knn_predic) *100
+paste('Error de prueba ', auto_testing_error_knn, '%')
+```
+
+En el desarrollo de los ejercicios anteriores para el dataset Auto, todos los clasificadores tienen unas buenas m&eacute;tricas y bajo error.
+
+**12. This problem involves writing functions.**
+
+  **a.  Write a function, Power(), that prints out the result of raising 2 to the 3rd power. In other words, your function should compute 23 and print out the results.**
+Hint: Recall that x^a raises x to the power a. Use the print() function to output the result.
+
+```{r}
+Power <- function(x) {
+  print( 2 ^ x)
+}
+```
+
+  **b. Create a new function, Power2(), that allows you to pass any two numbers, x and a, and prints out the value of x^a. You can do this by beginning your function with the line **
+Power2=function(x,a){
+You should be able to call your function by entering, for instance, Power2(3,8) on the command line. This should output the value of 38, namely, 6, 561.
+
+```{r}
+Power2 <- function(x,y) {
+  print( x ^ y )
+}
+```
+
+  **c. Using the Power2() function that you just wrote, compute 103, 817, and 1313.**
+
+```{r echo=FALSE}
+Power2(10,3)
+Power2(8,17)
+Power2(131,3)
+```
+
+  **d. Now create a new function, Power3(), that actually returns the result x^a as an R object, rather than simply printing it to the screen. That is, if you store the value x^a in an object called result within your function, then you can simply return() this result, using the following line:**
+return()
+return(result)
+The line above should be the last line in your function, before the } symbol.
+
+```{r}
+Power3 <- function(x,y) {
+  result <- x ^ y
+  return(result)
+}
+```
+
+  **e. Now using the Power3() function, create a plot of f(x) = x2. The x-axis should display a range of integers from 1 to 10, and the y-axis should display x2. Label the axes appropriately, and use an appropriate title for the figure. Consider displaying either the x-axis, the y-axis, or both on the log-scale. You can do this by using log=‘‘x’’, log=‘‘y’’, or log=‘‘xy’’ as arguments to the plot() function.**
+
+```{r echo=FALSE}
+x <- seq(1,10)
+plot(log(x), log(Power3(x,2)), main = 'f(x) = x^2 en escala logarítmica', xlab = 'Log(x)', ylab = 'Log(x^2)')
+```
+
+**f. Create a function, PlotPower(), that allows you to create a plot of x against x^a for a fixed a and for a range of values of x. **
+For instance, if you call PlotPower (1:10 ,3) then a plot should be created with an x-axis taking on values 1,2,...,10, and a y-axis taking on values 13,23,...,103.
+
+```{r}
+PlotPower <- function(x,a){
+plot(x, Power3(x,a), main = paste(' Potencias - f(x) = x^',a), xlab = 'x', ylab = paste('x^',a))
+}
+```
+
+**13. Using the Boston data set, fit classification models in order to predict whether a given suburb has a crime rate above or below the median. Explore logistic regression, LDA, and KNN models using various subsets of the predictors. Describe your findings.**
+
+Boston dataset que tiene informaci&oacute;n del valor de las casas en los suburbios de Boston. Posee variables como:
+
+* crim: Tasa de criminalidad por ciudad.
+* zn: Proporci&oacute;n de tierra residencial para lotes de más de 25,000 pies cuadrados.
+* indus: Proporci&oacute;n de acres de negocios no minoristas por ciudad.
+* chas: Variable ficticia de Charles River (= 1 si el tramo limita con el r&iacute;o; 0 en caso contrario).
+* nox: concentraci&oacute;n de &oacute;xidos de nitr&oacute;geno (partes por 10 millones).
+* rm: N&uacute;mero medio de habitaciones por vivienda.
+* a&ntilde;os:Proporci&oacute;n de unidades ocupadas por sus propietarios construidas antes de 1940.
+* dis: media ponderada de distancias a cinco centros de empleo de Boston.
+* rad: &iacute;ndice de accesibilidad a carreteras radiales.
+* impuesto: tasa de impuesto a la propiedad de valor total por $ 10,000.
+* ptratio: relaci&oacute;n alumno-profesor por localidad.
+* black: 1000 (Bk - 0.63) ^ 2 donde Bk es la proporci&oacute;n de negros por ciudad.
+* lstat: menor estado de la poblaci&oacute;n (porcentaje).
+* medv: valor medio de viviendas ocupadas por sus propietarios en $ 1000s.
+
+```{r echo=FALSE}
+boston_df <- Boston
+crim_median <- median(boston_df$crim)
+boston_df$crim_class <- ifelse(boston_df$crim >= crim_median, 1, 0)
+```
+
+Se dividen los datos en prueba y entrenamiento
+
+```{r echo=FALSE}
+set.seed(88)
+#Se dividen los datos, el 75% para entrenar y el 25% restante para probar
+inTrain_boston <- createDataPartition(y = boston_df$crim_class, p = .75, list = FALSE)
+training_boston <- boston_df[inTrain_boston,]
+testing_boston <- boston_df[-inTrain_boston,]
+
+#Imprimir el número de registros en cada partición
+paste("Total de datos usados para entrenamiento ", dim(training_boston)[1])
+paste("Total de datos usados para prueba ", dim(testing_boston)[1])
+```
+
+*Regresi&oacute;n log&iacute;stica*
+
+```{r echo=FALSE}
+boston_log <- glm(crim_class ~ ., data = training_boston, family = binomial)
+summary(boston_log)
+```
+
+Ninguna de las variables seleccionadas para la predici&oacute;n parecen ser estadísticamente significativas.
+
+```{r echo=FALSE}
+boston_predict_log <- predict(boston_log, testing_boston, type = "response")
+```
+
+De la matriz de confusión
+
+```{r echo=FALSE}
+#Traducción de los valores de predicción a las categorías del dataset original
+boston_predict_log[boston_predict_log > .5] = 1
+boston_predict_log[boston_predict_log <= .5] = 0
+#Matriz de confusión
+boston_log_cm <- table(boston_predict_log, testing_boston$crim_class)
+confusionMatrix(boston_log_cm)
+```
+
+La regresi&oacute;n log&iacute;stica para el dataset Boston y todas su caracter&iacute;sticas clasifica correctamente los valores de si la tasa de criminalidad esta por encima de la media o no, dando un accuracy del 96%
+
+```{r echo=FALSE}
+boston_testing_error_lr <- mean(testing_boston$crim_class != boston_predict_log) *100
+```
+
+De acuerdo a los resultados obtenidos el error de la predicci&oacute;n es del `r boston_testing_error_lr`% lo cual es bajo.
+
+*LDA*
+
+```{r echo=FALSE}
+boston_lda <- lda(crim_class ~ ., data = training_boston)
+boston_lda
+```
+
+Seg&uacute;n la funci&oacute;n discriminante de LDA, la probabilidad posterior que la tasa de criminalidad sea mayor que la media es del 50%.
+
+De la matriz de confusión
+
+```{r echo=FALSE}
+boston_lda_pred <- predict(boston_lda, newdata = testing_boston)
+boston_lda_cm <- table(testing_boston$crim_class, boston_lda_pred$class, dnn = c("Clase real", "Clase predicha"))
+confusionMatrix(boston_lda_cm)
+```
+
+El comportamiento de LDA sobre todas las variables que tiene el dataset Boston decrece con respecto a la regresi&oacute;n log&iacute;stica en las m&eacute;tricas de accuracy, sensibilidad y especificidad.
+
+```{r echo=FALSE}
+auto_testing_error <- mean(testing_auto$mpg01 != auto_lda_pred$class) *100
+paste('Error de prueba ', auto_testing_error, '%')
+```
+
+El error se incrementa un poco, sin embargo no es un mal clasificador para todas las variables del dataset.
+
+*KNN*
+
+```{r echo=FALSE}
+set.seed(88)
+bosto_knn_predic <- knn(training_boston[,1:14], testing_boston[,1:14], cl=training_boston$crim_class, k = 2)
+boston_knn_cm <- table(bosto_knn_predic, testing_boston$crim_class)
+confusionMatrix(boston_knn_cm)
+```
+
+Se prueba con k = [1,2,3,4,5,6] y se muestran los resultados con k=2 ya que es el k que da mejores resultados, con un accuracy del 95% y una alta tasa de efectividad en ambas clases.
+
+```{r echo=FALSE}
+boston_testing_error_knn <- mean(testing_boston$crim_class != bosto_knn_predic) *100
+```
+
+Y un error de prueba, `r boston_testing_error_knn`%
+
+Para el dataset completo de Boston, el clasificador que da mejor resultado clasificando si la tasa de criminalidad por ciudad esta por encima o por debajo de la media de Boston, es la regresi&oacute;n log&iacute;ca.
+
+<div id="8"></div>
+### **8. &Aacute;rboles de decisi&oacute;n**
+
+**Secci&oacute;n 8.4. Ejercicios**
+
+**7. In the lab, we applied random forests to the Boston data using mtry=6 and using ntree=25 and ntree=500. Create a plot displaying the test error resulting from random forests on this data set for a more com- prehensive range of values for mtry and ntree. You can model your plot after Figure 8.10. Describe the results obtained.**
+
+```{r echo=FALSE}
+set.seed(88)
+train <- sample(1:nrow(Boston), size = nrow(Boston)/2)
+rf_model <- randomForest(medv ~ ., data = Boston, subset = train, mtry = 13, ntree = 500)
+```
+
+C&aacute;lculo del n&uacute;mero &oacute;ptimo de variables aleatorias consideradas en cada divisi&oacute;n de los &aacute;rboles, para hallar dicho valor, se entrena con 400 árboles
+
+```{r echo=FALSE}
+oob.err<-double(13)
+test.err<-double(13)
+
+for(mtry in 1:13) 
+{
+  rf=randomForest(medv ~ . , data = Boston , subset = train, mtry=mtry, ntree=400) 
+  oob.err[mtry] = rf$mse[400] 
+  
+  pred<-predict(rf,Boston[-train,]) 
+  test.err[mtry]= with(Boston[-train,], mean( (medv - pred)^2))
+  
+  cat(mtry," ")
+}
+```
+
+```{r echo=FALSE}
+matplot(1:mtry , test.err, pch=19 ,type="b",ylab="Error Cuadratico Medio (MSE)",xlab="Número de variable aleatoras consideradas en cada división")
+legend("topright",legend="Test Error",pch=19)
+```
+
+C&aacute;lculo del n&uacute;mero &oacute;ptimo de &aacute;rboles considerados en el bosque.
+
+```{r echo = FALSE}
+oob_mse <- data.frame(oob_mse = rf_model$mse,
+                      arboles = seq_along(rf_model$mse))
+ggplot(data = oob_mse, aes(x = arboles, y = oob_mse )) + geom_line() + labs(title = "Evolución del MSE vs número árboles", x = "nº árboles") + theme_bw()
+```
+
+A partir de las gr&aacute;ficas anteriores se concluye que los p&aacute;rametros donde se minimiza el error del modelo Random Forest a partir de de los hiperp&aacute;rametros, n&uacute;mero de variables aleatorias consideradas en cada divisi&oacute;n de los &aacute;rboles y n&uacute;mero de &aacute;rboles, se tiene que con 7 variables aleatoreas y 20 &aacute;rboles, aproximadamente, se logra minimizar el error.
+
+**8. In the lab, a classification tree was applied to the Carseats data set after converting Sales into a qualitative response variable. Now we will seek to predict Sales using regression trees and related approaches, treating the response as a quantitative variable.**
+
+  **a. Split the data set into a training set and a test set.**
+
+Luego de dividir el dataset se tiene
+
+```{r echo=FALSE}
+set.seed(88)
+#Se dividen los datos, el 75% para entrenar y el 25% restante para probar
+inTrain_carseats <- createDataPartition(y = Carseats$Sales, p = .75, list = FALSE)
+training_carseats <- Carseats[inTrain_carseats,]
+testing_carseats <- Carseats[-inTrain_carseats,]
+
+#Imprimir el número de registros en cada partición
+paste("Total de datos usados para entrenamiento ", dim(training_carseats)[1])
+paste("Total de datos usados para prueba ", dim(testing_carseats)[1])
+```
+
+  **b. Fit a regression tree to the training set. Plot the tree, and interpret the results. What test MSE do you obtain?**
+
+Entrenamiento del árbol y generación de estructura del árbol
+
+```{r echo=FALSE}
+set.seed(88)
+arbol_regresion <- tree(formula = Sales ~ ., data = training_carseats, split = "deviance")
+plot(x = arbol_regresion, type = "proportional")
+text(x = arbol_regresion, splits = TRUE, pretty = 0, cex = 0.8, col = "firebrick")
+```
+
+La predicci&oacute;n de las ventas de sillas de carros para ni&ntilde;os parte de la variable ShelveLoc, esta variable es un factor con niveles malo, bueno y medio que indica la calidad de la ubicaci&oacute;n de la estanter&iacute;a para los asientos de autom&oacute;vil en cada sitio, esta variable es la que mayor pureza tiene y fue la escogida como nodo principal.
+
+Prediciendo a partir de los datos de prueba
+
+```{r echo=FALSE}
+arbol_reg_predic <- predict(arbol_regresion, newdata = testing_carseats)
+arbol_reg_mse <- mean((arbol_reg_predic - testing_carseats$Sales)^2)
+paste("Error de test (mse) del árbol de regresión tras podado:", round(arbol_reg_mse,2))
+```
+
+Este valor es la diferenica entre lo que se estima vs lo que se predice.
+
+  **c. Use cross-validation in order to determine the optimal level of tree complexity. Does pruning the tree improve the test MSE?**
+
+```{r echo=FALSE}
+set.seed(88)
+cv_arbol_sales <- cv.tree(arbol_regresion, K = 10)
+```
+
+Se busca el &aacute;bol que minimiza el error en cross-validation 
+
+```{r echo=FALSE}
+resultados_cv <- data.frame(n_nodos = cv_arbol_sales$size, deviance = cv_arbol_sales$dev, alpha = cv_arbol_sales$k)
+ggplot(data = resultados_cv, aes(x = n_nodos, y = deviance)) + geom_line() + geom_point() +
+      labs(title = "Error vs tamaño del árbol") + theme_bw() 
+```
+
+Gr&aacute;ficamente se evidencia que el error disminuye cuando se tiene &aacute;rboles de aproximadamente 14 nodos.
+
+```{r echo=FALSE}
+arbol_pruning_sales <- prune.tree(tree = arbol_regresion, best = 5)
+arbol_pruning_sales_predic <- predict(arbol_pruning_sales, newdata = testing_carseats)
+test_mse_pruning_sales <- mean((arbol_pruning_sales_predic - testing_carseats$Sales)^2)
+paste("Error de test (mse) del árbol de regresión tras podado:", round(test_mse_pruning_sales,2))
+```
+
+Luego de realizar el ejercicio de &aacute;rboles de regresi&oacute; con cross validation, haciendo pruning con los nodos del &aacute;rbol, no se ve mejora considerable en el error.
+
+  **d. Use the bagging approach in order to analyze this data. What test MSE do you obtain? Use the importance() function to determine which variables are most important.**
+  
+```{r echo=FALSE}
+set.seed(88)
+bagging_carseats <- bagging(Sales~., data=training_carseats)
+bagging_carseats_predict <- predict(bagging_carseats, newdata=testing_carseats)
+
+#MSE
+bagging_carseats_mse = mean((bagging_carseats_predict-testing_carseats$Sales)^2)
+#paste('Error cuadártico medio para bagging dataset carseats',bagging_carseats_mse)
+```
+
+Se entrena y predice con bagging y se tiene un error cuadártico medio para el dataset carseats del `r bagging_carseats_mse`
+
+Utilizando bagging para predecir las ventas de dataset carseats, se tiene un error del 3,18%.
+
+Las tres variables m&aacute;s importantes por bagging son Price (Precio que la compañía cobra por los asientos de automóvil en cada sitio), CompPrice (Precio cobrado por el competidor en cada ubicación), Age (Edad promedio de la población local). 
+
+```{r echo=FALSE}
+varImp(bagging_carseats)
+```
+
+  **e. Use random forests to analyze this data. What test MSE do you obtain? Use the importance() function to determine which variables are most important. Describe the effect of m, the number of variables considered at each split, on the error rate obtained.**
+  
+Se entrena el bosque aleatorio
+
+```{r echo=FALSE}
+arbol_bagging <- randomForest(Sales ~ ., data = training_carseats)
+arbol_bagging
+```
+
+Y se predice para llegar a la conclusión del MSE
+
+```{r echo=FALSE}
+arbol_bag_pred <- predict(object = arbol_bagging, newdata = testing_carseats)
+arbol_test_bag_mse  <- mean((arbol_bag_pred - testing_carseats$Sales)^2)
+paste("Error de test (mse) del modelo obtenido por bagging es:", round(arbol_test_bag_mse,2))
+```
+
+Usando random forest, el error cu&aacute;dratico medio disminuy&oacute; con respecto a los ejercicios anteriores, generando el bagging un MSE del 2.7%.
+
+Con respecto a las variables con mayor importancia en la regresi&oacute;n, se listan las tres m&aacute;s importantes: Age (Edad promedio de la población local), ShelveLoc (Calidad de la ubicaci&oacute;n del carro), Price (Precio que la compañía cobra por los asientos de automóvil en cada sitio)
+
+```{r echo=FALSE}
+importance(arbol_bagging, scale = TRUE)
+```
+
+**9. This problem involves the OJ data set which is part of the ISLR package.**
+
+El dataset OJ, Orange Juice Data, contiene informaci&oacute; de compras de clientes del producto Citrus Hill o Minute Maid Orange Juice.
+
+  **a. Create a training set containing a random sample of 800 observations, and a test set containing the remaining observations.**
+  
+Dividiendo los datos del dataset OJ, se tiene 
+
+```{r echo=FALSE}
+# Division de datos de pruebas y datos de entrenamiento
+set.seed(88)
+
+inTrain_oj <- createDataPartition(y = OJ$Purchase, p = .747, list = FALSE)
+training_oj <- OJ[inTrain_oj,]
+testing_oj <- OJ[-inTrain_oj, ]
+
+#Imprimir el número de registros en cada partición
+paste("Cantidad de datos para entrenamiento", dim(training_oj)[1])
+paste("Cantidad de datos para prueba", dim(testing_oj)[1])
+```
+
+  **b. Fit a tree to the training data, with Purchase as the response and the other variables as predictors. Use the summary() function to produce summary statistics about the tree, and describe the results obtained. What is the training error rate? How many terminal nodes does the tree have?**
+
+Se entrena el árbol de decisión
+
+```{r echo=FALSE}
+set.seed(88)
+arbol_class_oj <- tree(formula = Purchase ~ ., data = training_oj, split = "deviance")
+summary(arbol_class_oj)
+```
+
+De acuerdo al resumen del &aacute;rbol, las variables usadas para la construcci&oacute;n fueron LoyalCH (Fidelizaci&oacute;n para la marca Country Hill) y PriceDiff (Diferencia de precios entre las dos marcas). Para la cosntrucci&oacute;n del &aacute;rbol se usaron 7 nodos. La tasa de error del &aacute;rbol fue del 17%
+
+  **c. Type in the name of the tree object in order to get a detailed text output. Pick one of the terminal nodes, and interpret the information displayed.**
+  
+Los caminos que tomo el árbol son descritos a continuación:
+
+```{r echo=FALSE}
+arbol_class_oj
+```
+
+Si se toma el nodo terminal 7 para an&aacute;lizar, se tiene que cuando loyalCH es mayor a 0.7056, es decir cuando la fidelizaci&oacute;n de la marca CH este en un 70%, definitivamente el consumidor compra Citrull Hill
+
+  **d. Create a plot of the tree, and interpret the results.**
+
+```{r echo=FALSE}
+plot(x = arbol_class_oj, type = "proportional")
+text(x = arbol_class_oj, splits = TRUE, pretty = 0, cex = 0.8, col = "firebrick")
+```
+
+La clase que más predomina es CH, la variable seleccionada como la principal para dividir el árbol es LoyalCH, las demás variables que fueron tenidas en cuenta en la división del árbol, son PriceDiff, SalesPriceMM, StoreID. 
+
+  **e. Predict the response on the test data, and produce a confusion matrix comparing the test labels to the predicted test labels. What is the test error rate?**
+
+```{r echo=FALSE}
+arbol_class_predic <- predict(arbol_class_oj, newdata = testing_oj, type = 'class')
+oj_arbol_cm <- table(testing_oj$Purchase, arbol_class_predic)
+confusionMatrix(oj_arbol_cm)
+```
+
+```{r echo=FALSE}
+oj_testing_error <- mean(testing_oj$Purchase != arbol_class_predic) *100
+paste('Error de prueba ', oj_testing_error, '%')
+```
+
+El error en la clasificaci&oacute;n es del 20%, esta alto. Las clases de acuerdo a la matriz de confusi&oacute;n están bien clasificadas en un 80% y un 77%, si bien estos porcentajes no son bajos son más los valores que no estan siendo bien clasificados.
+
+  **f. Apply the cv.tree() function to the training set in order to determine the optimal tree size.**
+
+```{r}
+set.seed(88)
+  cv_arbol_purchase <- cv.tree(arbol_class_oj, K = 10)
+```
+
+Se busca el &aacute;bol que minimiza el error en cross-validation 
+
+  **g. Produce a plot with tree size on the x-axis and cross-validated classification error rate on the y-axis.**
+
+```{r echo=FALSE}
+resultados_cv_purchase <- data.frame(n_nodos = cv_arbol_purchase$size, deviance = cv_arbol_purchase$dev, alpha = cv_arbol_purchase$k)
+ggplot(data = resultados_cv_purchase, aes(x = n_nodos, y = deviance)) + geom_line() + geom_point() +
+      labs(title = "Error vs tamaño del árbol") + theme_bw() 
+```
+
+Gr&aacute;ficamente se evidencia que el error disminuye cuando se tiene &aacute;rboles de `r resultados_cv_purchase[resultados_cv_purchase[, "deviance"] == min(resultados_cv_purchase$deviance),]$n_nodos` nodos, con una desviación `r min(resultados_cv_purchase$deviance)`
+
+  **h. Which tree size corresponds to the lowest cross-validated classification error rate?**
+
+El tama&ntilde;o del &aacute;rbol con menor cross-validated classification error rate es en `r resultados_cv_purchase[resultados_cv_purchase[, "deviance"] == min(resultados_cv_purchase$deviance),]$n_nodos`
+
+  **i. Produce a pruned tree corresponding to the optimal tree size obtained using cross-validation. If cross-validation does not lead to selection of a pruned tree, then create a pruned tree with five terminal nodes.**
+
+```{r}
+arbol_pruning_purchase <- prune.tree(tree = arbol_class_oj, best = 5)
+arbol_pruning_purchase_predic <- predict(arbol_pruning_purchase, newdata = testing_oj, type = 'class')
+```
+
+  **j. Compare the training error rates between the pruned and unpruned trees. Which is higher?**
+
+Error de entrenamiento del &aacute;rbol pruned es del 17,13%
+
+```{r echo=FALSE}
+summary(arbol_pruning_purchase)
+```
+
+Error entrenamiento del &aacute;rbol sin pruned es del 15,5%
+
+```{r echo=FALSE}
+summary(arbol_class_oj)
+```
+
+En este caso, para este dataset el &aacute;rbol sin podar da menor error que el podado.
+
+  **k. Compare the test error rates between the pruned and unpruned trees. Which is higher?**
+
+```{r echo=FALSE}
+oj_knn_prune_error <- mean(testing_oj$Purchase != arbol_pruning_purchase_predic) *100
+paste('Error de prueba árbol con poda', oj_knn_prune_error, '%')
+```
+
+```{r echo=FALSE}
+oj_testing_error <- mean(testing_oj$Purchase != arbol_class_predic) *100
+paste('Error de prueba sin poda', oj_testing_error, '%')
+```
+
+El error de predicci&oacute;n del &aacute;rbol sin podar y con poda da igual.
+
+**10. We now use boosting to predict Salary in the Hitters data set.**
+
+Dataset Hitters (Baseball Data) contiene data de la Major League Baseball de los a&ntilde;s comprendidos entre 1896 y 1987
+
+  **a. Remove the observations for whom the salary information is unknown, and then log-transform the salaries.**
+
+```{r echo=FALSE}
+baseball <- Hitters
+paste('Número de registros Hitters', nrow(baseball))
+
+#Remover los valores nulos en el salario
+baseball <- na.omit(baseball)
+paste('Número de registros luego de borrar los registros con NA', nrow(baseball))
+
+#Aplicar log-transform al campo Salaries
+baseball$Salary <- log(baseball$Salary)
+```
+
+```{r echo=FALSE}
+hist(baseball$Salary, main = 'Distribución de los salarios', xlab = 'Salario', ylab = 'Frecuencia')
+```
+
+  **b. Create a training set consisting of the first 200 observations, and a test set consisting of the remaining observations.**
+  
+Al crear las particiones, la distribuci&oacute;n de los datos queda
+
+```{r echo=FALSE}
+# Division de datos de pruebas y datos de entrenamiento
+set.seed(88)
+
+inTrain_base <- createDataPartition(y = baseball$Salary, p = .758, list = FALSE)
+training_base <- baseball[inTrain_base,]
+testing_base <- baseball[-inTrain_base, ]
+
+#Imprimir el número de registros en cada partición
+paste("Cantidad de datos para entrenamiento",dim(training_base)[1])
+paste("Cantidad de datos para prueba", dim(testing_base)[1])
+```
+
+  **c. Perform boosting on the training set with 1,000 trees for a range of values of the shrinkage parameter λ. Produce a plot with different shrinkage values on the x-axis and the corresponding training set MSE on the y-axis. **
+
+```{r echo=FALSE}
+set.seed(88)
+boost_error <- double(13)
+sh <- 0.001
+shrinkage <- 0.001
+for(i in 1:13) 
+{
+  shrinkage = shrinkage + 0.001
+  boost_baseball = gbm(Salary~., data = training_base, distribution = "gaussian", n.trees = 10000, shrinkage = shrinkage)
+  boost_baseball_predict = predict(boost_baseball, testing_base, n.trees = 10000)
+  boost_error[i] = with(training_base, (boost_baseball_predict - Salary)^2 )
+  sh[i] = shrinkage
+}
+
+plot(sh, boost_error, pch = 23, ylab = "MSE", xlab = "Shrinkage", main = "Boosting Training Error")
+```
+
+  **d. Produce a plot with different shrinkage values on the x-axis and the corresponding test set MSE on the y-axis.**
+
+```{r echo=FALSE}
+set.seed(88)
+boost_error <- double(13)
+sh <- 0.001
+shrinkage <- 0.001
+for(i in 1:13) 
+{
+  shrinkage = shrinkage + 0.001
+  boost_baseball = gbm(Salary~., data = training_base, distribution = "gaussian", n.trees = 10000, shrinkage = shrinkage)
+  boost_baseball_predict = predict(boost_baseball, testing_base, n.trees = 10000)
+  boost_error[i] = with(testing_base, (boost_baseball_predict - Salary)^2 )
+  sh[i] = shrinkage
+}
+
+plot(sh, boost_error, pch = 23, ylab = "MSE", xlab = "Shrinkage", main = "Boosting Test Error")
+```
+
+  **e. Compare the test MSE of boosting to the test MSE that results from applying two of the regression approaches seen in Chapters 3 and 6.**
+
+```{r echo = FALSE}
+lm.fit = lm(Salary ~ ., data = training_base)
+lm.pred = predict(lm.fit, testing_base)
+paste('MSE Regresión lineal',mean((testing_base$Salary - lm.pred)^2))
+```
+
+```{r echo = FALSE}
+set.seed(88)
+x = model.matrix(Salary ~ ., data = training_base)[,-1]
+y = training_base$Salary
+x.test = model.matrix(Salary ~ ., data = testing_base)[,-1]
+lasso.fit = glmnet(x, y, alpha = 0)
+lasso.pred = predict(lasso.fit, s = 0.01, newx = x.test)
+paste('Lasso MSE',mean((testing_base$Salary - lasso.pred)^2))
+```
+
+Ambos MSE, regresi&oacute;n lineal y Lasso son muy similares, con respecto a los ejercicios anteriores de boosting depende de los hiperp&aacute;metros seleccionadas que el error mejora o no con respecto a estas otras t&eacute;cnicas.
+
+  **f. Which variables appear to be the most important predictors in the boosted model?**
+
+```{r echo=FALSE}
+summary(boost_baseball)
+```
+
+Las variables que aparecen con mayor importancia son CAtBat(Número de veces al bate durante su carrera
+),CRBI (Número de carreras bateadas durante su carrera), CHits (Número de hits durante su carrera).
+
+  **g. Now apply bagging to the training set. What is the test set MSE for this approach?**
+
+```{r echo=FALSE}
+library(ipred)
+set.seed(88)
+bagging_base <- bagging(Salary~., data=training_base)
+bagging_base_predict <- predict(bagging_base, testing_base)
+
+#MSE
+bagging_base_mse = mean((bagging_base_predict-testing_base$Salary)^2)
+paste('Error cuadrático medio para bagging dataset Hitters es',bagging_base_mse,'%')
+```
+
+**11. This question uses the Caravan data set.**
+
+El dataset Caravan - The Insurance Company (TIC) Benchmark - contiene informaci&oacute;n demogr&aacute;fica de clientes, derivada a partir del zip code. Cada registro contiene 86 variables que indican si un cliente compra la p&oacute;liza de seguros Caravana.
+
+  **a. Create a training set consisting of the first 1,000 observations, and a test set consisting of the remaining observations.**
+
+Luego de crear las particiones, se distribuyen los datos as&iacute;
+
+```{r echo = FALSE}
+# Division de datos de pruebas y datos de entrenamiento
+set.seed(88)
+
+inTrain_caravan <- createDataPartition(y = Caravan$Purchase, p = .172, list = FALSE)
+training_caravan <- Caravan[inTrain_caravan,]
+testing_caravan <- Caravan[-inTrain_caravan, ]
+
+#Imprimir el número de registros en cada partición
+paste("Cantidad de datos para entrenamiento", dim(training_caravan)[1])
+paste("Cantidad de datos para prueba", dim(testing_caravan)[1])
+```
+
+  **b. Fit a boosting model to the training set with Purchase as the response and the other variables as predictors. Use 1,000 trees, and a shrinkage value of 0.01. Which predictors appear to be the most important?**
+
+```{r echo=FALSE}
+set.seed(88)
+boosting_caravan = gbm(Purchase~., data = training_caravan, distribution = "gaussian", n.trees = 1000, shrinkage = 0.01)
+head(summary(boosting_caravan))
+```
+
+Las 3 características más importantes que explican la variación máxima en el conjunto de datos son PPERSAUT, MOPLHOOG, MINK7512
+
+  **c. Use the boosting model to predict the response on the test data. Predict that a person will make a purchase if the estimated probability of purchase is greater than 20 %. Form a confusion matrix. What fraction of the people predicted to make a purchase do in fact make one? How does this compare with the results obtained from applying KNN or logistic regression to this data set?**
+
+```{r echo = FALSE}
+boost_caravan_predict <- predict(boosting_caravan, testing_caravan, n.trees = 1000)
+
+#La probabilidad del 20% indica que compra
+caravan_rep = rep("No", dim(testing_caravan)[1])
+caravan_rep[boost_caravan_predict > .2] = "Yes"
+
+#Matriz de confusión
+boost_caravan_cm <- table(caravan_rep, testing_caravan$Purchase, dnn = c("Clase predicha", "Clase real"))
+boost_caravan_cm
+#confusionMatrix(boost_caravan_cm)
+```
+
+El `r boost_caravan_cm[2]/(boost_caravan_cm[1]+boost_caravan_cm[2])`% de las personas que el modelo predijo que compraban, efectivamente compraron. Cabe mencionar que los resultados estan condicionados a lo indicado por el encabezado del ejercicio, donde se determina que compra cuando la probabilidad es superior al 20%.
+
+
+**12. Apply boosting, bagging, and random forests to a data set of your choice. Be sure to fit the models on a training set and to evaluate their performance on a test set. How accurate are the results compared to simple methods like linear or logistic regression? Which of these approaches yields the best performance?**
+
+El dataset a selecccionar para realizar el ejercico es Weekly, el cual contiene informaci&oacute;n de los mercados en diferentes a&ntilde;os. Para este ejercicio las variables con las que se van a predecir son los con los porcentajes de inversi&oacute;n y el volumen.
+
+```{r echo = FALSE}
+summary(Weekly)
+# train <- sample(nrow(Weekly), 2/3 * nrow(Weekly))
+# training <- Weekly[train, ]
+# testing <- Weekly[-train,]
+```
+
+Se usa los dataset ya creados al inicio de este trabajo, secci&oacute;n 4, para prueba y entrenamiento 
+
+```{r echo = FALSE}
+paste('Tamaño dataset de entremiento', dim(training_wee)[1])
+paste('Tamaño dataset de prueba', dim(testing_wee)[1])
+training_wee$Direction = ifelse(training_wee$Direction == "Up", 1, 0)
+testing_wee$Direction = ifelse(testing_wee$Direction == "Up", 1, 0)
+```
+
+*Aproximaci&oacute;n desde Regresi&oacute;n log&iacute;stica*
+
+```{r echo=FALSE}
+set.seed(88)
+tit_log_fit = glm(Direction_factor  ~ Lag1 + Lag2 + Lag3 + Lag4 + Lag5 + Volume, family="binomial", data=training_wee)
+
+tit_log_predict = predict(tit_log_fit, newdata = testing_wee, type = "response")
+tit_rep = rep(0, dim(testing_wee)[1])
+tit_rep[tit_log_predict > .5] = 1
+log_cm_12 <- table(tit_rep, testing_wee$Direction_factor, dnn = c('Predicho','Real'))
+log_cm_12
+```
+
+```{r echo=FALSE}
+paste('Error de testing en regresión logística', (log_cm_12[1,2]+log_cm_12[2,1])/(log_cm_12[1,2]+log_cm_12[2,1]+log_cm_12[1,1]+log_cm_12[2,2]), '%')
+```
+
+*Aproximaci&oacute;n desde Boosting*
+
+```{r echo=FALSE}
+set.seed(88)
+tit_boost_fit = gbm(Direction ~ Lag1 + Lag2 + Lag3 + Lag4 + Lag5 + Volume, distribution = "bernoulli", n.trees = 5000, data = training_wee)
+tit_boost_predict = predict(tit_boost_fit, newdata = testing_wee, n.trees = 5000)
+tit_rep_boost = rep(0, length(tit_boost_predict))
+tit_rep_boost[tit_boost_predict > .5] = 1
+boos_cm_12 <- table(tit_rep_boost, testing_wee$Direction)
+boos_cm_12
+```
+
+```{r echo=FALSE}
+paste('Error de testing en boosting', (boos_cm_12[1,2]+boos_cm_12[2,1])/(boos_cm_12[1,2]+boos_cm_12[2,1]+boos_cm_12[1,1]+boos_cm_12[2,2]), '%')
+```
+
+*Aproximaci&oacute;n desde Bagging*
+
+```{r echo = FALSE}
+set.seed(88)
+wee_bagging_fit <- bagging(Direction ~ Lag1 + Lag2 + Lag3 + Lag4 + Lag5 + Volume, data = training_wee)
+wee_bagging_pred <- predict(wee_bagging_fit, newdata=testing_wee)
+
+wee_rep_bagging = rep(0, length(wee_bagging_pred))
+wee_rep_bagging[wee_bagging_pred > .5] = 1
+bagg_cm_12 <- table(wee_rep_bagging, testing_wee$Direction)
+bagg_cm_12
+```
+
+```{r echo=FALSE}
+paste('Error de testing en boosting', (bagg_cm_12[1,2]+bagg_cm_12[2,1])/(bagg_cm_12[1,2]+bagg_cm_12[2,1]+bagg_cm_12[1,1]+bagg_cm_12[2,2]), '%')
+```
+
+*Aproximaci&oacute;n desdes Random Forests*
+
+```{r echo=FALSE}
+set.seed(88)
+wee_rf_fit = randomForest(Direction ~ Lag1 + Lag2 + Lag3 + Lag4 + Lag5 + Volume, data = training_wee)
+wee_rf_pred = predict(wee_rf_fit, newdata = testing_wee)
+wee_rep_rf = rep(0, length(wee_rf_pred))
+wee_rep_rf[wee_rf_pred > .5] = 1
+rf_cm_12 <- table(wee_rep_rf, testing_wee$Direction)
+rf_cm_12
+```
+
+```{r echo=FALSE}
+paste('Error de testing en random forest', (rf_cm_12[1,2]+rf_cm_12[2,1])/(rf_cm_12[1,2]+rf_cm_12[2,1]+rf_cm_12[1,1]+rf_cm_12[2,2]), '%')
+```
+
+De los cuatro acercamientos de clasificaci&oacute;n, regresi&oacute;n log&iacute;stica tiene un error en las pruebas.
+
+<div id="9"></div>
+### **9. M&aacute;quinas de soporte vectorial (SVM)**
+**9. Secci&oacute;n Aplicaci&oacute;n**
+
+**4. Generate a simulated two-class data set with 100 observations and two features in which there is a visible but non-linear separation between the two classes. Show that in this setting, a support vector machine with a polynomial kernel (with degree greater than 1) or a radial kernel will outperform a support vector classifier on the training data. Which technique performs best on the test data? Make plots and report training and test error rates in order to back up your assertions.**
+
+```{r echo = FALSE}
+set.seed(131)
+x = rnorm(100)
+y = 3 * x^2 + 4 + rnorm(100)
+train = sample(100, 50)
+y[train] = y[train] + 3
+y[-train] = y[-train] - 3
+# Plot using different colors
+plot(x[train], y[train], pch="+", lwd=4, col="red", ylim=c(-4, 20), xlab="X", ylab="Y")
+points(x[-train], y[-train], pch="o", lwd=4, col="blue")
+```
+
+*SVM Lineal*
+
+```{r echo = FALSE}
+set.seed(315)
+z = rep(0, 100)
+z[train] = 1
+final.train = c(sample(train, 25), sample(setdiff(1:100, train), 25))
+data.train = data.frame(x=x[final.train], y=y[final.train], z=as.factor(z[final.train]))
+data.test = data.frame(x=x[-final.train], y=y[-final.train], z=as.factor(z[-final.train]))
+
+svm.linear = svm(z~., data=data.train, kernel="linear", cost=10)
+plot(svm.linear, data.train, main = '')
+```
+
+Ac&aacute; se evidencia la separaci&oacute;n lineal. En los datos de prueba, 10 observaciones fueron mal clasificadas (x en amarillo)
+
+Matiz de confusi&oacute;n
+
+```{r echo = FALSE}
+table(z[final.train], predict(svm.linear, data.train))
+```
+
+El modelo lineal tiene 10 errores en los datos de entrenamiento.
+
+
+*SVM Polinomial*
+
+```{r echo = FALSE}
+set.seed(88)
+svm.poly = svm(z~., data=data.train, kernel="polynomial", cost=10)
+plot(svm.poly, data.train)
+```
+
+Matiz de confusi&oacute;n
+
+```{r echo = FALSE}
+table(z[final.train], predict(svm.poly, data.train))
+```
+
+El polinomio con grado 3 tiene 15 errores en los datos de entrenamiento.
+
+*SVM Radial*
+
+```{r echo = FALSE}
+set.seed(88)
+svm.radial = svm(z~., data=data.train, kernel="radial", gamma=1, cost=10)
+plot(svm.radial, data.train)
+```
+
+Matiz de confusi&oacute;n
+
+```{r echo = FALSE}
+table(z[final.train], predict(svm.radial, data.train))
+```
+
+Este clasificador clasifica correctamente los datos de entrenamiento
+
+**Para los datos de prueba**
+
+*SVM Lineal*
+
+```{r echo = FALSE}
+plot(svm.linear, data.test)
+```
+
+Matiz de confusi&oacute;n
+
+```{r echo=FALSE}
+table(z[-final.train], predict(svm.linear, data.test))
+```
+
+*SVM Polinomial*
+
+```{r echo = FALSE}
+table(z[-final.train], predict(svm.poly, data.test))
+```
+
+Matiz de confusi&oacute;n
+```{r echo = FALSE}
+plot(svm.poly, data.test)
+```
+
+*SVM Radial*
+
+```{r echo = FALSE}
+table(z[-final.train], predict(svm.radial, data.test))
+```
+
+Matiz de confusi&oacute;n
+
+```{r echo = FALSE}
+plot(svm.radial, data.test)
+```
+
+Kernel radial clasifica correctamente todo el datas set, con cero errores.
+
+**5. We have seen that we can fit an SVM with a non-linear kernel in order to perform classification using a non-linear decision boundary. We will now see that we can also obtain a non-linear decision boundary by performing logistic regression using non-linear transformations of the features.**
+
+  **a. Generate a data set with n = 500 and p = 2, such that the observations belong to two classes with a quadratic decision boundary between them.**
+
+```{r}
+set.seed(88)
+x1 = runif(500) - 0.5
+x2 = runif(500) - 0.5
+y = 1 * (x1^2 - x2^2 > 0)
+```
+
+  **b. Plot the observations, colored according to their class labels. Your plot should display X1 on the x-axis, and X2 on the y-axis.**
+
+```{r echo = FALSE}
+plot(x1[y == 0], x2[y == 0], col = "red", xlab = "X1", ylab = "X2", pch = "+")
+points(x1[y == 1], x2[y == 1], col = "blue", pch = 4)
+```
+
+  **c. Fit a logistic regression model to the data, using X1 and X2 as predictors.**
+```{r echo = FALSE}
+lrfit = glm(y ~ x1 + x2, family = binomial)
+summary(lrfit)
+```
+
+Ac&aacute; ninguna variable x1, x2, es estad&iacute;sticamente significativa.
+
+  **d. Apply this model to the training data in order to obtain a predicted class label for each training observation. Plot the observations, colored according to the predicted class labels. The decision boundary should be linear.**
+
+```{r echo = FALSE}
+data5 = data.frame(x1 = x1, x2 = x2, y = y)
+lrprob = predict(lrfit, data5, type = "response")
+lrpredict = ifelse(lrprob > 0.52, 1, 0)
+data.pos = data5[lrpredict == 1, ]
+data.neg = data5[lrpredict == 0, ]
+plot(data.pos$x1, data.pos$x2, col = "blue", xlab = "X1", ylab = "X2", pch = "+")
+points(data.neg$x1, data.neg$x2, col = "red", pch = 4)
+```
+
+  **e. Now fit a logistic regression model to the data using non-linear functions of X1 and X2 as predictors (e.g. X12, X1 ×X2, log(X2), and so forth).**
+
+```{r echo = FALSE, warning=FALSE}
+lm.fit = glm(y ~ poly(x1, 2) + poly(x2, 2), data = data5, family = 'binomial')
+summary(lm.fit)
+```
+
+  **f. Apply this model to the training data in order to obtain a predicted class label for each training observation. Plot the observations, colored according to the predicted class labels. The decision boundary should be obviously non-linear. If it is not, then repeat (a)-(e) until you come up with an example in which the predicted class labels are obviously non-linear.**
+
+```{r echo = FALSE, warning=FALSE}
+lm.prob = predict(lm.fit, data5, type = "response")
+lm.pred = ifelse(lm.prob > 0.5, 1, 0)
+data.pos = data5[lm.pred == 1, ]
+data.neg = data5[lm.pred == 0, ]
+plot(data.pos$x1, data.pos$x2, col = "blue", xlab = "X1", ylab = "X2", pch = "+")
+points(data.neg$x1, data.neg$x2, col = "red", pch = 4)
+```
+
+  **g. Fit a support vector classifier to the data with X1 and X2 as predictors. Obtain a class prediction for each training observation. Plot the observations, colored according to the predicted class labels.**
+
+```{r echo = FALSE}
+svm.fit = svm(as.factor(y) ~ x1 + x2, data5, kernel = "linear", cost = 0.1)
+svm.pred = predict(svm.fit, data5)
+data.pos = data5[lm.pred == 1, ]
+data.neg = data5[lm.pred == 0, ]
+plot(data.pos$x1, data.pos$x2, col = "blue", xlab = "X1", ylab = "X2", pch = "+")
+points(data.neg$x1, data.neg$x2, col = "red", pch = 4)
+
+```
+
+  **h. Fit a SVM using a non-linear kernel to the data. Obtain a class prediction for each training observation. Plot the observations, colored according to the predicted class labels.**
+
+```{r echo = FALSE}
+svm.fit = svm(as.factor(y) ~ x1 + x2, data5, gamma = 1)
+svm.pred = predict(svm.fit, data5)
+data.pos = data5[svm.pred == 1, ]
+data.neg = data5[svm.pred == 0, ]
+plot(data.pos$x1, data.pos$x2, col = "blue", xlab = "X1", ylab = "X2", pch = "+")
+points(data.neg$x1, data.neg$x2, col = "red", pch = 4)
+```
+
+  **i. Comment on your results.**
+
+Los SVM con kernel no lineal son extremadamente poderosos para encontrar l&iacute;mites no lineales
+
+**6. At the end of Section 9.6.1, it is claimed that in the case of data that is just barely linearly separable, a support vector classifier with a small value of cost that misclassifies a couple of training observations may perform better on test data than one with a huge value of cost that does not misclassify any training observations. You will now investigate this claim.**
+
+  **a. Generate two-class data with p = 2 in such a way that the classes are just barely linearly separable.**
+
+```{r echo = FALSE}
+set.seed(88)
+#Clase 1
+x_1 = runif(500, 0, 90)
+y_1 = runif(500, x_1 + 10, 100)
+x_1_r = runif(50, 20, 80)
+y_1_r = 5/4 * (x_1_r - 10) + 0.1
+
+# Clase 0
+x_0 = runif(500, 10, 100)
+y_0 = runif(500, 0, x_0 - 10)
+x_0_r = runif(50, 20, 80)
+y_0_r = 5/4 * (x_0_r - 10) - 0.1
+
+# Combinar ambas clases
+clases = seq(1, 550)
+x = c(x_1, x_1_r, x_0, x_0_r)
+y = c(y_1, y_1_r, y_0, y_0_r)
+
+plot(x[clases], y[clases], col = "blue", pch = "+", ylim = c(0, 100), xlab = 'x', ylab = 'y')
+points(x[-clases], y[-clases], col = "red", pch = 4)
+```
+
+  **b. Compute the cross-validation error rates for support vector classifiers with a range of cost values. How many training errors are misclassified for each value of cost considered, and how does this relate to the cross-validation errors obtained?**
+
+```{r echo = FALSE}
+set.seed(88)
+z = rep(0, 1100)
+z[clases] = 1
+data = data.frame(x = x, y = y, z = z)
+tune.out = tune(svm, as.factor(z) ~ ., data = data, kernel = "linear", ranges = list(cost = c(0.01, 
+    0.1, 1, 5, 10, 100, 1000, 10000)))
+summary(tune.out)
+```
+
+La tabla de asociaci&oacute;n de los costos con sus errores de clasificaci&oacute;n, muestra que cuando el costo es igual a 10000 tiene un error de 0, es decir, clasifica todo los puntos correctamente.
+
+```{r echo = FALSE}
+data.frame(cost = tune.out$performances$cost, misclass = tune.out$performances$error * 1100)
+```
+
+  **c. Generate an appropriate test data set, and compute the test errors corresponding to each of the values of cost considered. Which value of cost leads to the fewest test errors, and how does this compare to the values of cost that yield the fewest training errors and the fewest cross-validation errors?**
+
+Se generan datos de prueba aleatoriamente
+
+```{r echo = FALSE}
+set.seed(88)
+x.test = runif(1000, 0, 100)
+clases = sample(1000, 500)
+y.test = rep(NA, 1000)
+#  y > x para la clase 1
+for (i in clases) {
+    y.test[i] = runif(1, x.test[i], 100)
+}
+# y < x para la clase 0
+for (i in setdiff(1:1000, clases)) {
+    y.test[i] = runif(1, 0, x.test[i])
+}
+plot(x.test[clases], y.test[clases], col = "blue", pch = "+", ylab = 'y', xlab = 'x')
+points(x.test[-clases], y.test[-clases], col = "red", pch = 4)
+```
+
+```{r echo = FALSE}
+set.seed(88)
+z.test = rep(0, 1000)
+z.test[clases] = 1
+all.costs = c(0.01, 0.1, 1, 5, 10, 100, 1000, 10000)
+test.errors = rep(NA, 8)
+data.test = data.frame(x = x.test, y = y.test, z = z.test)
+for (i in 1:length(all.costs)) {
+    svm.fit = svm(as.factor(z) ~ ., data = data, kernel = "linear", cost = all.costs[i])
+    svm.predict = predict(svm.fit, data.test)
+    test.errors[i] = sum(svm.predict != data.test$z)
+}
+
+data.frame(cost = all.costs, `test misclass` = test.errors)
+```
+
+El costo igual a 10 parece tener mejor desempe&ntilde;o en la data de prueba.
+
+  **d. Discuss your results.**
+
+Los costos peque&ntilde;os tiene buen desempe&ntilde;o en los modelos de SVM, por lo visto en estos datos.
+
+**7. In this problem, you will use support vector approaches in order to predict whether a given car gets high or low gas mileage based on the Auto data set.**
+
+  **a. Create a binary variable that takes on a 1 for cars with gas mileage above the median, and a 0 for cars with gas mileage below the median.**
+
+```{r}
+auto_df <- Auto
+mpg_median <- median(auto_df$mpg)
+auto_df$mpg01 <- ifelse(auto_df$mpg >= mpg_median, 1, 0)
+```
+
+  **b. Fit a support vector classifier to the data with various values of cost, in order to predict whether a car gets high or low gas mileage. Report the cross-validation errors associated with different values of this parameter. Comment on your results.**
+
+```{r echo=FALSE}
+svm_auto = tune.svm(mpg01~., data = auto_df, cost=c(0.001,0.01,0.1, 1,5,10,100,130))
+svm_auto$best.parameters$cost
+summary(svm_auto)
+
+```
+
+El par&aacute;rametro costo define que cantidad de puntos usa el modelo para seleccionar un vector de soporte, es el par&aacute;metro de penalizaci&oacute;n del t&eacute;rmino de error. Controla la compensaci&oacute;n entre el l&iacute;mite de decisión suave y la clasificación correcta de los puntos de entrenamiento.
+
+Al costo ser m&aacute;s grande, selecciona m&aacute;s y puede caer en sobreajuste. Para este caso, el mejor par&aacute;rametro de costo basado en los posibles valores a probar es 130, donde se tiene un error del 3%, sin embargo pensando en que entre m&aacute;s grande el valor m&aacute;s se ajustan los datos, se podr&iacute;a tomar un valor costo de 10 y no se sacrifica tanto error, porque ser&iacute;a del 4%.
+
+  **c. Now repeat (b), this time using SVMs with radial and polynomial basis kernels, with different values of gamma and degree and cost. Comment on your results.**
+
+```{r warning=FALSE,message=FALSE, echo=FALSE}
+svm_auto_c = tune.svm(mpg01~., data = auto_df, kernel = c('radial', 'polynomial'), cost=c(0.001,0.01,0.1, 1,5,10,100,130), gamma=c(0.01,0.10,1.00,5.00,10.00 ), degree = c(1,2,3,4,5,8))
+paste('Mejor Kernel:',svm_auto_c$best.parameters$kernel)
+paste('Mejor Cost:',svm_auto_c$best.parameters$cost)
+paste('Mejor Gamma:',svm_auto_c$best.parameters$gamma)
+paste('Mejor Degree:',svm_auto_c$best.parameters$degree)
+```
+
+```{r echo = FALSE}
+head(summary(svm_auto_c))
+```
+
+Al igual que el par&aacute;metro cost, gamma cuando toma valores muy altos tiende a sobreajustar el modelo, en este caso el gamma &oacute;ptimo de los posibles dados para realizar el tunning es un gamma bajo (0.01) al igual que el costo. Gamma es usado en hiperplanos no lineales. Ambos par&aacute;metros controlan la variance y el bias (parcialidad) de los SMV. 
+
+Por su parte degree son los grados del polinomio usado para encontrar el hiperplano que divide los datos, solo se tiene en cuenta cuando se usa este tipo de funci&oacute;n, en este ejercicio al mostar valor &oacute;ptimo en el par&aacute;metro degree igual a 1 indica que se utilz&oacute; como funci&oacute;n de kernel el valor lineal.
+
+  **d. Make some plots to back up your assertions in (b) and (c). Hint: In the lab, we used the plot() function for svm objects only in cases with p = 2. When p > 2, you can use the plot() function to create plots displaying pairs of variables at a time. Essentially, instead of typing plot(svmfit , dat) where svmfit contains your fitted model and dat is a data frame containing your data, you can type plot(svmfit , dat , x1∼x4) in order to plot just the first and fourth variables. However, you must replace x1 and x4 with the correct variable names. To find out more, type ?plot.svm.**
+
+```{r echo = FALSE}
+#Punto b entrenado con los valores óptimos encontrados
+svmfit_b =svm(mpg01~., data = training_auto, cost=130)
+plot(svmfit_b , training_aut, mpg ~ year, slice = list(mpg = 18, year = 70))
+```
+
+```{r echo = FALSE}
+#Punto c entrenado con los valores óptimos encontrados
+svmfit_c =svm(mpg01~., data = training_auto, cost=5, gamma = 0.1, degree = 1)
+plot(svmfit_c , training_auto, mpg ~ year, slice = list(mpg = 18, year = 70))
+```
+
+
+**8. This problem involves the OJ data set which is part of the ISLR package.**
+
+  **a Create a training set containing a random sample of 800 observations, and a test set containing the remaining observations.**
+
+Actividad realizada en el cap&iacute;tulo 8.4 Clasificaci&oacute;n, secci&oacute;n 9, ejercicio a
+
+```{r echo = FALSE}
+#Imprimir el número de registros en cada partición
+paste("Cantidad de datos para entrenamiento dataset OJ", dim(training_oj)[1])
+paste("Cantidad de datos para prueba dataset OJ", dim(testing_oj)[1])
+```
+
+  **b. Fit a support vector classifier to the training data using cost=0.01, with Purchase as the response and the other variables as predictors. Use the summary() function to produce summary statistics, and describe the results obtained.**
+
+```{r echo = FALSE}
+set.seed(88)
+oj_svmfit =svm(Purchase ~ ., data = training_oj, cost = 0.01)
+summary(oj_svmfit)
+```
+
+Las m&aacute;quinas de soporte vectorial para el dataset OJ, prediciendo si un cliente compra Citrus Hill o Minute Maid Orange Juice indica que son dos clases las que utiliz&oacute;, las cuales tienen los niveles o toman los valores de CH y MM, construy&oacute; 626 vectores de soporte de los cuales 314 fueron para CH y 312 para MM.
+
+  **c. What are the training and test error rates?**
+
+Error de entrenamiento 
+
+```{r echo = FALSE}
+confusionMatrix(table(oj_svmfit$fitted, training_oj$Purchase, dnn = c('predicho', 'real')))
+```
+
+A partir de la matriz de confusi&oacute;n, el error de entrenamiento es del `r (312)/(312+488)`%
+
+```{r echo = FALSE}
+oj_svmfit_predict <- predict(oj_svmfit, testing_oj)
+confusionMatrix(table(oj_svmfit_predict, testing_oj$Purchase, dnn = c('predicho','real')))
+```
+
+A partir de la matriz de confusi&oacute;n, el error de entrenamiento es del `r (105)/(105+165)`%
+
+  **d. Use the tune() function to select an optimal cost. Consider values in the range 0.01 to 10.**
+
+```{r echo = FALSE}
+set.seed(88)
+tune.svm_oj = tune.svm(Purchase ~ ., data = training_oj,  kernel = 'linear', cost = seq(from=0.005, to=1,by=0.005))
+summary(tune.svm_oj)
+```
+
+El costo &oacute;ptimo es de 0.2
+
+  **e Compute the training and test error rates using this new value for cost.**
+
+```{r echo = FALSE}
+oj_svmfit_aftertun <- svm(Purchase ~ ., data = training_oj, cost = tune.svm_oj$best.parameters$cost)
+oj_svmpred_aftertun <- predict(oj_svmfit_aftertun, testing_oj)
+cm_train <- table(oj_svmfit_aftertun$fitted, training_oj$Purchase)
+cm_test <- table(oj_svmpred_aftertun, testing_oj$Purchase)
+```
+
+Matriz de confusión de entrenamiento
+
+```{r}
+confusionMatrix(cm_train)
+```
+
+Matriz de confusión de prueba 
+
+```{r}
+confusionMatrix(cm_test)
+```
+
+```{r echo = FALSE}
+paste('Error de entrenamiento:', (cm_train[1,2]+cm_train[2,1])/(cm_train[1,2]+cm_train[2,1]+cm_train[1,1]+cm_train[2,2]),'%')
+paste('Error de prueba:', (cm_test[1,2]+cm_test[2,1])/(cm_test[1,2]+cm_test[2,1]+cm_test[1,1]+cm_test[2,2]),'%')
+```
+
+Para este conjunto de datos luego de aplicar el valor de costo dado en el ejercicio anterior, se tiene que los errores de entrenamiento y prueba disminuyen considerablemente con respecto al punto c.
+
+  **f. Repeat parts (b) through (e) using a support vector machine with a radial kernel. Use the default value for gamma.**
+
+```{r echo = FALSE}
+#Punto b entrenado con los valores óptimos encontrados
+set.seed(88)
+oj_svmfit_kernel =svm(Purchase ~ ., data = training_oj, kernel = 'radial')
+summary(oj_svmfit_kernel)
+```
+
+Construy&oacute; 377 vectores de soporte de los cuales 191 fueron para CH y 186 para MM.
+
+Error de entrenamiento 
+
+```{r echo = FALSE}
+cm <- table(oj_svmfit_kernel$fitted, training_oj$Purchase, dnn = c('predicho', 'real'))
+confusionMatrix(cm)
+```
+
+```{r echo = FALSE}
+paste('A partir de la matriz de confusión, el error de entrenamiento es del ',(cm[1,2]+cm[2,1])/(cm[1,2]+cm[2,1]+cm[1,1]+cm[2,2]),'%')
+```
+
+```{r echo = FALSE}
+set.seed(88)
+oj_svmfit_kernel_predict <- predict(oj_svmfit_kernel, testing_oj)
+cm <- table(oj_svmfit_kernel_predict, testing_oj$Purchase, dnn = c('predicho','real'))
+confusionMatrix(cm)
+```
+
+```{r echo = FALSE}
+paste('A partir de la matriz de confusión, el error de predicción es del ',(cm[1,2]+cm[2,1])/(cm[1,2]+cm[2,1]+cm[1,1]+cm[2,2]),'%')
+```
+
+Hipertuning del costo (c)
+
+```{r echo = FALSE}
+set.seed(88)
+tune_svm_kernel_oj = tune.svm(Purchase ~ ., data = training_oj,  kernel = 'radial', cost = seq(from=0.005, to=1,by=0.005))
+summary(tune_svm_kernel_oj)
+```
+
+El costo &oacute;ptimo para el kernel radial es de 0.52
+
+C&aacute;lculo del error en entrenamiento y pruebas luego de aplicar el par&aacute;metro &oacute;ptimo de C
+
+```{r echo = FALSE}
+oj_svmfit_kernel_aftertun <- svm(Purchase ~ ., data = training_oj, kernel = 'radial', cost = tune_svm_kernel_oj$best.parameters$cost)
+oj_svmpred_kernel_aftertun <- predict(oj_svmfit_kernel_aftertun, testing_oj)
+
+#matriz de confusión de entrenamiento
+cm <- table(oj_svmfit_kernel_aftertun$fitted, training_oj$Purchase)
+confusionMatrix(cm)
+```
+
+```{r echo = FALSE}
+paste('Error con datos de entrenamiento: ',(cm[1,2]+cm[2,1])/(cm[1,2]+cm[2,1]+cm[1,1]+cm[2,2]),'%')
+```
+
+```{r echo = FALSE}
+#matriz de confusión de prueba
+cm <- table(oj_svmpred_kernel_aftertun, testing_oj$Purchase)
+confusionMatrix(cm)
+```
+
+```{r echo = FALSE}
+paste('Error con datos de prueba: ', (cm[1,2]+cm[2,1])/(cm[1,2]+cm[2,1]+cm[1,1]+cm[2,2]),'%')
+```
+
+Ac&aacute; los errores de entrenamiento y pruebas son muy similares y as&iacute; como en el ejercicio (f), son iguales luego de hacer hipertunning.
+
+  **g. Repeat parts (b) through (e) using a support vector machine with a polynomial kernel. Set degree=2.**
+
+```{r echo = FALSE}
+#Entrenar el SVM con kernel polynomial y degree = 2
+set.seed(88)
+oj_svmfit_degree =svm(Purchase ~ ., data = training_oj, kernel = 'polynomial', degree = 2)
+summary(oj_svmfit_degree)
+```
+
+Construy&oacute; 460 vectores de soporte de los cuales 223 fueron para CH y 228 para MM. Uso el valor de costo por defecto (1)
+
+```{r echo = FALSE}
+cm <- table(oj_svmfit_degree$fitted, training_oj$Purchase, dnn = c('predicho', 'real'))
+confusionMatrix(cm)
+```
+```{r echo = FALSE}
+paste("Error de entrenamiento: ",(cm[1,2]+cm[2,1])/(cm[1,2]+cm[2,1]+cm[1,1]+cm[2,2]),'%')
+```
+
+```{r echo = FALSE}
+oj_svmfit_degree_predict <- predict(oj_svmfit_degree, testing_oj)
+cm <- table(oj_svmfit_degree_predict, testing_oj$Purchase, dnn = c('predicho','real'))
+confusionMatrix(cm)
+```
+
+```{r echo = FALSE}
+paste('A partir de la matriz de confusón, el error de prueba es del: ',(cm[1,2]+cm[2,1])/(cm[1,2]+cm[2,1]+cm[1,1]+cm[2,2]),'%')
+```
+
+Hipertuning del costo (C)
+
+```{r echo = FALSE}
+set.seed(88)
+tune_svm_degree_oj = tune.svm(Purchase ~ ., data = training_oj,  kernel = 'poly', cost = seq(from=0.005, to=1,by=0.005))
+summary(tune_svm_degree_oj)
+```
+
+El costo &oacute;ptimo para el kernel radial es de 0.85
+
+C&aacute;lculo del error en entrenamiento y pruebas luego de aplicar el par&aacute;metro &oacute;ptimo de C
+
+```{r echo = FALSE}
+oj_svmfit_degree_aftertun <- svm(Purchase ~ ., data = training_oj, kernel = 'poly', degree = 2, cost = tune_svm_degree_oj$best.parameters$cost)
+oj_svmpred_kernel_aftertun <- predict(oj_svmfit_degree_aftertun, testing_oj)
+
+#matriz de confusión de entrenamiento
+cm <- table(oj_svmfit_degree_aftertun$fitted, training_oj$Purchase)
+confusionMatrix(cm)
+
+```
+
+```{r echo = FALSE}
+paste('Error de entrenamiento: ', (cm[1,2]+cm[2,1])/(cm[1,2]+cm[2,1]+cm[1,1]+cm[2,2]),'%')
+```
+
+```{r echo = FALSE}
+#matriz de confusión de prueba
+cm <- table(oj_svmpred_kernel_aftertun, testing_oj$Purchase)
+confusionMatrix(cm)
+```
+
+```{r echo = FALSE}
+paste('Error de prueba: ',(cm[1,2]+cm[2,1])/(cm[1,2]+cm[2,1]+cm[1,1]+cm[2,2]),'%')
+```
+
+Ambos errores de entrenamiento y de test dan igual al 18%
+
+  **h. Overall, which approach seems to give the best results on this data?**
+
+Luego de ejecutar 6 diferentes acercamientos a SMV con variaci&oacute; en sus hiperp&aacute;rametros se encuentra que el modelo donde se disminuy&oacute; m&aacute; los errores de entrenamiento y prueba fue utilizando el kernel radial.
+Compo conclusi&oacute;n general del ejercicio, en la medida que se pruebe con diferentes par&aacute;metros se minimiza en la mayor&iacute;a de los casos los errores tanto en entrenamiento como en prueba.
+
+### **Ensayo / Calidad del aire en Medell&iacute;n**
+<div style="text-align: justify">
+Cuando se habla de estado de alerta por que los contaminantes que afectan la calidad del aire se encuentran en los niveles más altos y afectan la salud de los habitantes de los municipios del Área Metropolitana del Valle del Aburrá, el primera culpable al que se dirigen todas las miradas es a los vehículos particulares como principal generador de material particulado PM2.5 y otros contaminantes. Los vehículos particulares son el medio de transporte utilizado por las personas para desplazarse a sus lugares de trabajo, su estudio o para realizar otras actividades que no se encuentran cercanas entre sí, siendo el desplazamiento laboral el mayor y más frecuente factor de  movilización.
+
+Si bien en Medellín contamos con un amplio sistema de transporte público, no todas las personas los usan, bien sea porque en el sector donde viven el sistema de transporte público no es el mejor o porque con la cantidad de habitantes del área metropolitana usándolo el sistema sería demasiado congestionado, entre otras posibles opciones para no usarlo. Pero si pensáramos un poco en  que medidas podemos incentivar para que las personas no vean la necesidad de desplazarse tan frecuentemente y así minimizar el número de vehículos en las calles, el teletrabajo es una muy buena medidas, tanto para los empleadores como para los empleados, esta comprobado que las personas que trabajan desde sus casas son más productivos, mejoran su calidad de vida e incentivan el trabajo en equipo, las empresas que lo hacen promueven la inclusión social, reducen costos fijos, impulsa el uso apropiado de las tecnologías y lo más importante ambos aportan al mejoramiento de la movilidad en las ciudades y reduce los índices de contaminación [1].
+
+Las técnicas de aprendizaje estadísticos aportan a la consecución del teletrabajo y por ende a contribuir en la solución del problema de calidad del aire en Medellín. A partir de dichas técnicas y con el análisis de la información recopilada en los diferentes sistemas de información de tránsito de la ciudad se puede determinar los días de mayor afluencia de vehículos y generar un sistema de recomendación de días de teletrabajo para los trabajadores, de acuerdo a la ubicación de su hogar, el lugar donde labora y las rutas de acceso más frecuentes, adicionalmente con las técnicas de aprendizaje estadístico, también se puede contribuir a las empresas a seleccionar a las personas que pueden realizar teletrabajo, para nadie es un secreto que aún las empresas no confían 100% en el teletrabajo y no saben cómo seleccionar a los empleados candidatos para hacerlo, es aquí donde dichas técnicas pueden contribuir, implementando un sistema de clasificación en donde a partir de variables demográficas, de desempeño, de funciones laborales y de distancias se pueda determinar que tan viable es para un colaborador llevar a cabo sus labores por fuera de las instalaciones de las empresas.
+La calidad del aire en los municipios que conforman el área metropolitana depende de las acciones que cada uno de sus habitantes, entes gubernamentales e industria realicen, con miras a mitigar el impacto de nuestras actuaciones en el medio ambiente, es aquí donde a través del teletrabajo cada individuo y empresa pueden contribuir, apoyándose en las técnicas de aprendizaje estadístico, implementando métodos como los expuesto anteriormente y permitiéndose vivir el cambio apoyado de la tecnología, los datos y las técnicas de machine learning.
+<div/>
+
+### **Bibliograf&iacute;a **
+
+[1] Los cinco beneficios del Teletrabajo que todo empresario debe saber. [Página Web]. Recuperado de  https://teletrabajo.gov.co/622/w3-article-11180.html
+
+[2] Gareth James, Daniela Witten, Trevor Hastie Robert Tibshirani. (2013). An Introduction To Statistical Learning. Springer. pp 168, pp 332, pp 368
