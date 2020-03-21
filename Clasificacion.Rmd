@@ -41,11 +41,13 @@ g-table-intro h4 {
 knitr::opts_chunk$set(message=FALSE, warning=FALSE)
 ```
 
-Este trabajo consiste en desarrollar  ejercicios del libro gu&iacute;a de la materia T&eacute;cnicas de aprendizaje estad&iacute;stico, A Introduction to Statistical Learning with Application in R[2]. El listado de ejercicios por secci&oacute;n son:
+Este trabajo consiste en desarrollar  ejercicios del libro gu&iacute;a de la materia T&eacute;cnicas de aprendizaje estad&iacute;stico, A Introduction to Statistical Learning with Application in R[2](#2). El listado de ejercicios por secci&oacute;n son:
 
 * Secci&oacute;n [4. Clasificaci&oacute;n](#4) se deben desarrollar los ejercicios del 10 al 13
 * Secci&oacute;n [8 &Aacute;rboles de decisi&oacute;n](#8), se deben desarrollar los ejercicios del 7 al 12
 * Secci&oacute;n [9 M&aacute;quinas de suporte vectorial](#9), se deben desarrollar los ejercicios del 4 al 8
+
+Adicionalmente, elaborar un [ensayo](#e) de una página argumentando cómo desde el aprendizaje estadístico se puede contribuir a solucionar el problema de la calidad del aire en Medellín.
 
 ```{r,warning=FALSE,message=FALSE, echo=FALSE}
 #Librerías a utilizar en el desarrollo de los ejercicios
@@ -1742,18 +1744,20 @@ Ambos errores de entrenamiento y de test dan igual al 18%
 Luego de ejecutar 6 diferentes acercamientos a SMV con variaci&oacute; en sus hiperp&aacute;rametros se encuentra que el modelo donde se disminuy&oacute; m&aacute; los errores de entrenamiento y prueba fue utilizando el kernel radial.
 Compo conclusi&oacute;n general del ejercicio, en la medida que se pruebe con diferentes par&aacute;metros se minimiza en la mayor&iacute;a de los casos los errores tanto en entrenamiento como en prueba.
 
+<div id="e"></div>
 ### **Ensayo / Calidad del aire en Medell&iacute;n**
 <div style="text-align: justify">
 Cuando se habla de estado de alerta por que los contaminantes que afectan la calidad del aire se encuentran en los niveles más altos y afectan la salud de los habitantes de los municipios del Área Metropolitana del Valle del Aburrá, el primera culpable al que se dirigen todas las miradas es a los vehículos particulares como principal generador de material particulado PM2.5 y otros contaminantes. Los vehículos particulares son el medio de transporte utilizado por las personas para desplazarse a sus lugares de trabajo, su estudio o para realizar otras actividades que no se encuentran cercanas entre sí, siendo el desplazamiento laboral el mayor y más frecuente factor de  movilización.
 
-Si bien en Medellín contamos con un amplio sistema de transporte público, no todas las personas los usan, bien sea porque en el sector donde viven el sistema de transporte público no es el mejor o porque con la cantidad de habitantes del área metropolitana usándolo el sistema sería demasiado congestionado, entre otras posibles opciones para no usarlo. Pero si pensáramos un poco en  que medidas podemos incentivar para que las personas no vean la necesidad de desplazarse tan frecuentemente y así minimizar el número de vehículos en las calles, el teletrabajo es una muy buena medidas, tanto para los empleadores como para los empleados, esta comprobado que las personas que trabajan desde sus casas son más productivos, mejoran su calidad de vida e incentivan el trabajo en equipo, las empresas que lo hacen promueven la inclusión social, reducen costos fijos, impulsa el uso apropiado de las tecnologías y lo más importante ambos aportan al mejoramiento de la movilidad en las ciudades y reduce los índices de contaminación [1].
+Si bien en Medellín contamos con un amplio sistema de transporte público, no todas las personas los usan, bien sea porque en el sector donde viven el sistema de transporte público no es el mejor o porque con la cantidad de habitantes del área metropolitana usándolo el sistema sería demasiado congestionado, entre otras posibles opciones para no usarlo. Pero si pensáramos un poco en  que medidas podemos incentivar para que las personas no vean la necesidad de desplazarse tan frecuentemente y así minimizar el número de vehículos en las calles, el teletrabajo es una muy buena medidas, tanto para los empleadores como para los empleados, esta comprobado que las personas que trabajan desde sus casas son más productivos, mejoran su calidad de vida e incentivan el trabajo en equipo, las empresas que lo hacen promueven la inclusión social, reducen costos fijos, impulsa el uso apropiado de las tecnologías y lo más importante ambos aportan al mejoramiento de la movilidad en las ciudades y reduce los índices de contaminación [1](#1).
 
 Las técnicas de aprendizaje estadísticos aportan a la consecución del teletrabajo y por ende a contribuir en la solución del problema de calidad del aire en Medellín. A partir de dichas técnicas y con el análisis de la información recopilada en los diferentes sistemas de información de tránsito de la ciudad se puede determinar los días de mayor afluencia de vehículos y generar un sistema de recomendación de días de teletrabajo para los trabajadores, de acuerdo a la ubicación de su hogar, el lugar donde labora y las rutas de acceso más frecuentes, adicionalmente con las técnicas de aprendizaje estadístico, también se puede contribuir a las empresas a seleccionar a las personas que pueden realizar teletrabajo, para nadie es un secreto que aún las empresas no confían 100% en el teletrabajo y no saben cómo seleccionar a los empleados candidatos para hacerlo, es aquí donde dichas técnicas pueden contribuir, implementando un sistema de clasificación en donde a partir de variables demográficas, de desempeño, de funciones laborales y de distancias se pueda determinar que tan viable es para un colaborador llevar a cabo sus labores por fuera de las instalaciones de las empresas.
 La calidad del aire en los municipios que conforman el área metropolitana depende de las acciones que cada uno de sus habitantes, entes gubernamentales e industria realicen, con miras a mitigar el impacto de nuestras actuaciones en el medio ambiente, es aquí donde a través del teletrabajo cada individuo y empresa pueden contribuir, apoyándose en las técnicas de aprendizaje estadístico, implementando métodos como los expuesto anteriormente y permitiéndose vivir el cambio apoyado de la tecnología, los datos y las técnicas de machine learning.
 <div/>
 
 ### **Bibliograf&iacute;a **
-
+<div id="1"></div>
 [1] Los cinco beneficios del Teletrabajo que todo empresario debe saber. [Página Web]. Recuperado de  https://teletrabajo.gov.co/622/w3-article-11180.html
 
+<div id="2"></div>
 [2] Gareth James, Daniela Witten, Trevor Hastie Robert Tibshirani. (2013). An Introduction To Statistical Learning. Springer. pp 168, pp 332, pp 368
